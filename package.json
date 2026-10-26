@@ -1,0 +1,23 @@
+{
+  "name": "cloutlab-bot",
+  "version": "1.0.0",
+  "description": "Cloutlab Telegram Bot",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "ts-node src/index.ts"
+  },
+  "dependencies": {
+    "@grammyjs/types": "^3.11.0",
+    "age-encryption": "^0.2.1",
+    "dotenv": "^16.4.5",
+    "grammY": "^1.21.1",
+    "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.24",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
