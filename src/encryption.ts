@@ -8,7 +8,7 @@ export async function encryptLeadData(leadData: object): Promise<string> {
       throw new Error('Age recipient is missing or invalid');
     }
 
-    const enc = new age.Encryptor();
+    const enc = new age.Encrypter();
     enc.addRecipient(config.leadsAgeRecipient);
     
     const jsonString = JSON.stringify(leadData);

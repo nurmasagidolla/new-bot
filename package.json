@@ -12,7 +12,7 @@
     "@grammyjs/types": "^3.11.0",
     "age-encryption": "^0.2.1",
     "dotenv": "^16.4.5",
-    "grammY": "^1.21.1",
+    "grammy": "^1.21.1",
     "sqlite3": "^5.1.7"
   },
   "devDependencies": {
