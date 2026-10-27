@@ -1,22 +1,21 @@
-import * as age from 'age-encryption';
-import { config } from './config';
-import { logger } from './logger';
+import { Encrypter } from 'age-encryption';
 
-export async function encryptLeadData(leadData: object): Promise<string> {
-  try {
-    if (!config.leadsAgeRecipient || !config.leadsAgeRecipient.startsWith('age1')) {
-      throw new Error('Age recipient is missing or invalid');
-    }
-
-    const enc = new age.Encrypter();
-    enc.addRecipient(config.leadsAgeRecipient);
-    
-    const jsonString = JSON.stringify(leadData);
-    const encryptedBytes = await enc.encrypt(Buffer.from(jsonString, 'utf-8'));
-    
-    return Buffer.from(encryptedBytes).toString('base64');
-  } catch (err) {
-    logger.error('Failed to encrypt lead data', err);
-    throw err;
+/**
+ * Шифрует строку (JSON заявки) на публичный ключ age1...
+ * Возвращает base64-строку с зашифрованными данными.
+ * Бот не может расшифровать — только панель с приватным ключом.
+ */
+export async function encryptLead(payload: object, recipient: string): Promise<string> {
+  if (!recipient || !recipient.startsWith('age1')) {
+    throw new Error('LEADS_AGE_RECIPIENT is not configured or invalid (должен начинаться с "age1")');
   }
+
+  const encrypter = new Encrypter();
+  encrypter.addRecipient(recipient);
+
+  const json = JSON.stringify(payload);
+  const encrypted = await encrypter.encrypt(new TextEncoder().encode(json));
+
+  // В БД храним как base64-строку, чтобы читалось через API
+  return Buffer.from(encrypted).toString('base64');
 }

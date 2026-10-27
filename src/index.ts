@@ -1,72 +1,103 @@
-import { Bot } from 'grammY';
-import http from 'http';
+import 'dotenv/config';
 import { config } from './config';
-import { db, initDb } from './schema';
+import { initDb } from './schema';
+import { initExtraTables, cleanupOldData } from './db-queries';
 import { logger } from './logger';
-import { checkRateLimit } from './rate-limiter';
-import { getTranslation } from './i18n';
-import { Lang } from './types';
+import { createBot } from './bot';
+import { createPanelServer } from './api';
 
-initDb();
-const bot = new Bot(config.botToken);
+async function main() {
+  // 1. База
+  initDb();
+  await initExtraTables();
 
-bot.use(async (ctx, next) => {
-  const userId = ctx.from?.id;
-  if (userId && !checkRateLimit(userId)) {
-    return;
+  // 2. Бот
+  const bot = createBot();
+
+  // 3. Диагностика: getMe с таймаутом
+  try {
+    const me = await Promise.race([
+      bot.api.getMe(),
+      new Promise<never>((_, reject) =>
+        setTimeout(() => reject(new Error('getMe timeout 15s')), 15_000),
+      ),
+    ]);
+    logger.info(`getMe OK: @${me.username}`);
+  } catch (e) {
+    logger.error('Cannot reach Telegram', e);
+    process.exit(1);
   }
-  await next();
-});
 
-bot.command('start', async (ctx) => {
-  const userId = ctx.from?.id;
-  if (!userId) return;
+  // 4. Меню команд
+  try {
+    await bot.api.setMyCommands(
+      [
+        { command: 'start',   description: 'Главное меню' },
+        { command: 'menu',    description: 'Меню' },
+        { command: 'brief',   description: 'Оставить заявку' },
+        { command: 'contact', description: 'Написать нам' },
+        { command: 'lang',    description: 'Сменить язык' },
+        { command: 'privacy', description: 'Политика конфиденциальности' },
+        { command: 'delete',  description: 'Удалить мои данные' },
+        { command: 'help',    description: 'Помощь' },
+      ],
+      { scope: { type: 'default' }, language_code: 'ru' },
+    );
+    await bot.api.setMyCommands(
+      [
+        { command: 'start',   description: 'Main menu' },
+        { command: 'menu',    description: 'Menu' },
+        { command: 'brief',   description: 'Start a project' },
+        { command: 'contact', description: 'Message us' },
+        { command: 'lang',    description: 'Change language' },
+        { command: 'privacy', description: 'Privacy policy' },
+        { command: 'delete',  description: 'Delete my data' },
+        { command: 'help',    description: 'Help' },
+      ],
+      { scope: { type: 'default' }, language_code: 'en' },
+    );
+    logger.info('Commands registered for ru and en');
+  } catch (e) {
+    logger.error('Failed to register commands', e);
+  }
 
-  const langCode = ctx.from?.language_code || 'en';
-  const defaultLang: Lang = ['ru', 'uk', 'be', 'kk'].includes(langCode) ? 'ru' : 'en';
-
-  db.get(`SELECT * FROM users WHERE userId = ?`, [userId], (err, row: any) => {
-    if (!row) {
-      db.run(`INSERT INTO users (userId, lang, subscribed, createdAt) VALUES (?, ?, 0, ?)`, 
-        [userId, defaultLang, new Date().toISOString()]);
-    }
+  // 5. HTTP API панели
+  const server = createPanelServer();
+  server.listen(config.panelApiPort, config.panelApiHost, () => {
+    logger.info(`Panel API running on ${config.panelApiHost}:${config.panelApiPort}`);
   });
 
-  await ctx.reply(getTranslation(defaultLang, 'welcome'));
-});
+  // 6. Фоновая очистка
+  setInterval(() => {
+    cleanupOldData().catch((e) => logger.error('Cleanup failed', e));
+  }, 60 * 60 * 1000);
 
-// HTTP сервер для панели бэкендера
-const server = http.createServer(async (req, res) => {
-  const authHeader = req.headers['authorization'];
-  
-  if (req.url === '/health') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true }));
-    return;
+  // 7. Graceful shutdown
+  function shutdown(signal: string) {
+    logger.info(`${signal} received, stopping`);
+    setTimeout(() => process.exit(1), 5000).unref();
+    Promise.resolve(bot.stop()).catch(() => {});
+    server.close(() => process.exit(0));
   }
 
-  if (!authHeader || authHeader !== `Bearer ${config.panelApiToken}`) {
-    res.writeHead(401, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ error: 'Unauthorized' }));
-    return;
-  }
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('unhandledRejection', (err) => {
+    console.error('[FATAL] Unhandled rejection:', err);
+    process.exit(1);
+  });
+  process.on('uncaughtException', (err) => {
+    console.error('[FATAL] Uncaught exception:', err);
+    process.exit(1);
+  });
 
-  if (req.url?.startsWith('/leads')) {
-    db.all(`SELECT seq, at, encryptedData FROM leads LIMIT 100`, [], (err, rows: any[]) => {
-      const leads = rows.map(r => ({ seq: r.seq, at: r.at, age: r.encryptedData }));
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ leads, next: 0, last: rows.length ? rows[rows.length - 1].seq : 0 }));
-    });
-    return;
-  }
+  // 8. Запуск
+  await bot.start({
+    onStart: (botInfo) => logger.info(`Cloutlab Telegram Bot started: @${botInfo.username}`),
+  });
+}
 
-  res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: 'Not Found' }));
+main().catch((err) => {
+  console.error('[FATAL] main() failed:', err);
+  process.exit(1);
 });
-
-server.listen(config.panelApiPort, config.panelApiHost, () => {
-  logger.info(`Panel API running on ${config.panelApiHost}:${config.panelApiPort}`);
-});
-
-bot.start();
-logger.info('Cloutlab Telegram Bot started successfully.');

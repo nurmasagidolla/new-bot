@@ -1,18 +1,28 @@
-import { Lang } from './types';
+import type { Lang } from './types';
+import { dbGet } from './db-queries';
+import ru from './locales/ru';
+import en from './locales/en';
 
-export const texts = {
-  ru: {
-    welcome: 'Привет! Это Cloutlab, студия разработки. Делаем сайты и веб-приложения, мобильные приложения, Telegram-ботов, CRM, AI-агентов и автоматизацию. Выберите раздел в меню.',
-    error: 'Что-то пошло не так. Попробуйте ещё раз через минуту.',
-    unknownCmd: 'Я понимаю кнопки меню. Чтобы задать вопрос человеку, нажмите «Написать нам».',
-  },
-  en: {
-    welcome: 'Hi! This is Cloutlab, a software studio. We build websites and web apps, mobile apps, Telegram bots, CRMs, AI agents and automations. Pick a section below.',
-    error: 'Something went wrong. Please try again in a minute.',
-    unknownCmd: 'I work with the menu buttons. To ask a person, tap Message us.',
+const dictionaries: Record<Lang, any> = { ru, en };
+
+export function getTranslation(lang: Lang, key: string, params?: Record<string, string>): string {
+  const dict = dictionaries[lang] ?? dictionaries.en;
+  const parts = key.split('.');
+  let value: any = dict;
+  for (const part of parts) {
+    value = value?.[part];
+    if (value === undefined) return key;
   }
-};
+  if (typeof value !== 'string') return key;
+  if (params) {
+    for (const [k, v] of Object.entries(params)) {
+      value = value.replace(new RegExp(`\\{${k}\\}`, 'g'), v);
+    }
+  }
+  return value;
+}
 
-export function getTranslation(lang: Lang, key: keyof typeof texts['ru']): string {
-  return texts[lang][key] || texts.en[key] || key;
+export async function getUserLang(userId: number): Promise<Lang> {
+  const row = await dbGet<{ lang: string }>(`SELECT lang FROM users WHERE userId = ?`, [userId]);
+  return (row?.lang as Lang) ?? 'en';
 }

@@ -1,8 +1,39 @@
-version: '3.8'
 services:
   bot:
     build: .
+    network_mode: host
+    security_opt:
+      - label:disable
+    image: cloutlab-bot:latest
+    container_name: cloutlab-bot
     restart: unless-stopped
-    env_file: .env
+
+    # Все секреты — из .env (не коммитим в git)
+    env_file:
+      - .env
+    environment:
+      - PANEL_API_HOST=0.0.0.0
+    # SQLite и логи переживают перезапуск контейнера
     volumes:
-      - ./data:/app/data
+      - ./data:/app/data:Z
+
+    #ports:
+    #  - "127.0.0.1:3000:3000"
+
+    # Корректная остановка (SIGTERM → tini → node)
+    stop_grace_period: 10s
+
+    # Логи с ротацией
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+    # Healthcheck (переиспользует /health)
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s

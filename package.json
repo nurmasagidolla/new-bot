@@ -6,18 +6,27 @@
   "scripts": {
     "build": "tsc",
     "start": "node dist/index.js",
-    "dev": "ts-node src/index.ts"
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@grammyjs/types": "^3.11.0",
-    "age-encryption": "^0.2.1",
+    "age-encryption": "^0.2.4",
+    "docker": "^1.0.0",
     "dotenv": "^16.4.5",
     "grammy": "^1.21.1",
-    "sqlite3": "^5.1.7"
+    "sqlite3": "^5.1.7",
+    "undici": "^8.12.3"
   },
   "devDependencies": {
-    "@types/node": "^20.11.24",
+    "@resvg/resvg-js": "^2.6.2",
+    "@types/node": "^22.20.5",
+    "@types/supertest": "^7.2.1",
+    "satori": "^0.63.2",
+    "sharp": "^0.35.5",
+    "supertest": "^7.3.1",
     "ts-node": "^10.9.2",
-    "typescript": "^5.3.3"
+    "typescript": "^5.3.3",
+    "vitest": "^5.0.5"
   }
 }

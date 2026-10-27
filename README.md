@@ -1,9 +1,28 @@
 # Cloutlab Telegram Bot
 
-Production-ready Telegram bot for Cloutlab studio (Node.js 24 + TypeScript + grammY + SQLite + age encryption).
+Telegram-бот студии разработки Cloutlab: витрина услуг, заявки, контакт с клиентами, API для внутренней панели.
 
-## Setup & Run
-1. Copy `.env.example` to `.env` and fill in your variables.
-2. Install dependencies: `npm install`
-3. Build & start: `npm run build && npm start`
-   Or via Docker: `docker-compose up -d`
+- Сайт: https://cloutlab.studio
+- Бот: @cloutlab_bot
+- Языки: русский, английский
+
+---
+
+## 📦 Стек
+
+- **Node.js 22** + **TypeScript** (CommonJS)
+- **grammY** — Telegram Bot API
+- **SQLite** (`sqlite3` + WAL) — хранение состояния
+- **age-encryption** — шифрование заявок (X25519)
+- **undici** — ProxyAgent для Telegram API (опционально)
+- **Docker** + **docker-compose**
+
+---
+
+## 🚀 Запуск (Docker, рекомендуется)
+
+### 1. Скопировать `.env` и заполнить
+
+```bash
+cp .env.example .env
+nano .env
