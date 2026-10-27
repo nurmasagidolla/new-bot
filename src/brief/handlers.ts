@@ -6,6 +6,7 @@ import { getBrief, saveBrief } from '../fsm/brief';
 import type { BriefState } from '../fsm/brief';
 import { encryptLead } from '../encryption';
 import { getTranslation, getUserLang } from '../i18n';
+import { setLastBotMessage, setLastUserMessage } from '../bot/message-tracker';
 import {
   showConsent,
   showService,
@@ -18,7 +19,6 @@ import {
 } from './views';
 
 export function installBrief(bot: Bot): void {
-  // ---------- Старт ----------
   bot.callbackQuery('brief_start', async (ctx) => {
     await ctx.answerCallbackQuery();
     const userId = ctx.from?.id;
@@ -39,16 +39,19 @@ export function installBrief(bot: Bot): void {
   bot.command('brief', async (ctx) => {
     const userId = ctx.from?.id;
     if (!userId) return;
+    if (ctx.message?.message_id) {
+      setLastUserMessage(userId, ctx.message.message_id);
+    }
     const existing = await getBrief(userId);
     if (!existing || existing.step === 'done' || existing.step === 'consent') {
       await saveBrief(userId, { step: 'consent' });
       await showConsent(ctx);
       return;
     }
-    await ctx.reply(`Продолжаем заявку. Текущий шаг: ${existing.step}`);
+    const sent = await ctx.reply(`Продолжаем заявку. Текущий шаг: ${existing.step}`);
+    setLastBotMessage(userId, sent.message_id);
   });
 
-  // ---------- Шаг 1: Согласие ----------
   bot.callbackQuery('brief_consent_yes', async (ctx) => {
     const userId = ctx.from?.id;
     if (!userId) return;
@@ -68,7 +71,6 @@ export function installBrief(bot: Bot): void {
     await showService(ctx);
   });
 
-  // ---------- Шаг 2: Услуга ----------
   bot.callbackQuery(/^brief_service_(.+)$/, async (ctx) => {
     const userId = ctx.from?.id;
     if (!userId) return;
@@ -89,7 +91,6 @@ export function installBrief(bot: Bot): void {
     await showIndustry(ctx);
   });
 
-  // ---------- Шаг 3: Отрасль ----------
   bot.callbackQuery(/^brief_industry_(.+)$/, async (ctx) => {
     const userId = ctx.from?.id;
     if (!userId) return;
@@ -110,7 +111,6 @@ export function installBrief(bot: Bot): void {
     await showBudget(ctx);
   });
 
-  // ---------- Шаг 4: Бюджет ----------
   bot.callbackQuery(/^brief_budget_(.+)$/, async (ctx) => {
     const userId = ctx.from?.id;
     if (!userId) return;
@@ -131,7 +131,6 @@ export function installBrief(bot: Bot): void {
     await showMessageStep(ctx);
   });
 
-  // ---------- Шаги 5–7: текст ----------
   bot.on('message:text', async (ctx, next) => {
     const userId = ctx.from?.id;
     if (!userId) return next();
@@ -141,16 +140,17 @@ export function installBrief(bot: Bot): void {
     if (!state) return next();
     const lang = await getUserLang(userId);
 
-    // Задача
     if (state.step === 'message') {
       if (text.length < 10 || text.length > 2000) {
         const msg =
           lang === 'ru'
             ? 'Задача должна быть от 10 до 2000 символов. Попробуйте ещё раз.'
             : 'The task must be 10–2000 characters. Try again.';
-        await ctx.reply(msg);
+        const sent = await ctx.reply(msg);
+        setLastBotMessage(userId, sent.message_id);
         return;
       }
+      setLastUserMessage(userId, ctx.message.message_id);
       state.message = text;
       if (state.editing) {
         state.step = 'review';
@@ -165,16 +165,17 @@ export function installBrief(bot: Bot): void {
       return;
     }
 
-    // Имя
     if (state.step === 'name') {
       if (text.length < 1 || text.length > 80) {
         const msg =
           lang === 'ru'
             ? 'Имя должно быть от 1 до 80 символов. Попробуйте ещё раз.'
             : 'The name must be 1–80 characters. Try again.';
-        await ctx.reply(msg);
+        const sent = await ctx.reply(msg);
+        setLastBotMessage(userId, sent.message_id);
         return;
       }
+      setLastUserMessage(userId, ctx.message.message_id);
       state.name = text;
       if (state.editing) {
         state.step = 'review';
@@ -189,7 +190,6 @@ export function installBrief(bot: Bot): void {
       return;
     }
 
-    // Email
     if (state.step === 'contact' && !state.contact) {
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(text)) {
@@ -197,9 +197,11 @@ export function installBrief(bot: Bot): void {
           lang === 'ru'
             ? 'Похоже, это не email. Попробуйте ещё раз, например: name@example.com'
             : 'That does not look like an email. Try again, e.g. name@example.com';
-        await ctx.reply(msg);
+        const sent = await ctx.reply(msg);
+        setLastBotMessage(userId, sent.message_id);
         return;
       }
+      setLastUserMessage(userId, ctx.message.message_id);
       state.contact = { type: 'email', value: text };
       state.step = 'review';
       state.editing = false;
@@ -211,7 +213,6 @@ export function installBrief(bot: Bot): void {
     return next();
   });
 
-  // ---------- Шаг 7: контакт ----------
   bot.callbackQuery('brief_contact_telegram', async (ctx) => {
     const userId = ctx.from?.id;
     if (!userId) return;
@@ -236,6 +237,7 @@ export function installBrief(bot: Bot): void {
           ],
         },
       });
+      setLastBotMessage(userId, ctx.callbackQuery!.message!.message_id);
       return;
     }
     const state = await getBrief(userId);
@@ -267,6 +269,7 @@ export function installBrief(bot: Bot): void {
         ],
       },
     });
+    setLastBotMessage(userId, ctx.callbackQuery!.message!.message_id);
   });
 
   bot.callbackQuery('brief_contact_phone_request', async (ctx) => {
@@ -277,13 +280,14 @@ export function installBrief(bot: Bot): void {
     const text =
       lang === 'ru' ? 'Нажмите кнопку, чтобы отправить номер:' : 'Tap the button to share your number:';
     const btn = lang === 'ru' ? '📱 Отправить мой номер' : '📱 Send my phone';
-    await ctx.reply(text, {
+    const sent = await ctx.reply(text, {
       reply_markup: {
         keyboard: [[{ text: btn, request_contact: true }]],
         resize_keyboard: true,
         one_time_keyboard: true,
       },
     });
+    setLastBotMessage(userId, sent.message_id);
   });
 
   bot.on('message:contact', async (ctx, next) => {
@@ -296,15 +300,18 @@ export function installBrief(bot: Bot): void {
     if (ctx.message.contact.user_id !== userId) {
       const msg =
         lang === 'ru' ? 'Нужен именно ваш контакт. Попробуйте ещё раз.' : 'We need your own contact. Try again.';
-      await ctx.reply(msg);
+      const sent = await ctx.reply(msg);
+      setLastBotMessage(userId, sent.message_id);
       return;
     }
+    setLastUserMessage(userId, ctx.message.message_id);
     state.contact = { type: 'phone', value: ctx.message.contact.phone_number };
     state.step = 'review';
     state.editing = false;
     await saveBrief(userId, state);
     const saved = lang === 'ru' ? 'Номер сохранён.' : 'Phone saved.';
-    await ctx.reply(saved, { reply_markup: { remove_keyboard: true } });
+    const sent = await ctx.reply(saved, { reply_markup: { remove_keyboard: true } });
+    setLastBotMessage(userId, sent.message_id);
     await showReview(ctx, state);
   });
 
@@ -327,9 +334,9 @@ export function installBrief(bot: Bot): void {
         ],
       },
     });
+    setLastBotMessage(userId, ctx.callbackQuery!.message!.message_id);
   });
 
-  // ---------- Шаг 8: проверка / исправление ----------
   bot.callbackQuery('brief_edit', async (ctx) => {
     await ctx.answerCallbackQuery();
     const userId = ctx.from?.id;
@@ -352,6 +359,7 @@ export function installBrief(bot: Bot): void {
         ],
       },
     });
+    setLastBotMessage(userId, ctx.callbackQuery!.message!.message_id);
   });
 
   bot.callbackQuery('brief_edit_service', async (ctx) => {
@@ -440,14 +448,12 @@ export function installBrief(bot: Bot): void {
     await showReview(ctx, state);
   });
 
-  // ---------- Шаг 9: отправка ----------
   bot.callbackQuery('brief_submit', async (ctx) => {
     const userId = ctx.from?.id;
     if (!userId) return;
     await ctx.answerCallbackQuery();
     const lang = await getUserLang(userId);
 
-    // Лимит 3 заявки за сутки
     const todayLeads = await dbGet<{ c: number }>(
       `SELECT COUNT(*) as c FROM leads WHERE at > datetime('now', '-1 day')`,
     );
@@ -459,6 +465,7 @@ export function installBrief(bot: Bot): void {
           ],
         },
       });
+      setLastBotMessage(userId, ctx.callbackQuery!.message!.message_id);
       return;
     }
 
@@ -470,6 +477,7 @@ export function installBrief(bot: Bot): void {
           ? 'Не хватает данных. Начните заново: /brief'
           : 'Missing data. Start over: /brief';
       await ctx.editMessageText(err);
+      setLastBotMessage(userId, ctx.callbackQuery!.message!.message_id);
       return;
     }
 
@@ -515,6 +523,7 @@ export function installBrief(bot: Bot): void {
           ],
         },
       });
+      setLastBotMessage(userId, ctx.callbackQuery!.message!.message_id);
       return;
     }
 
@@ -529,19 +538,19 @@ export function installBrief(bot: Bot): void {
         ],
       },
     });
+    setLastBotMessage(userId, ctx.callbackQuery!.message!.message_id);
   });
 
-  // ---------- Отмена ----------
   bot.callbackQuery('brief_cancel', async (ctx) => {
     const userId = ctx.from?.id;
     if (!userId) return;
     await ctx.answerCallbackQuery();
     const lang = await getUserLang(userId);
     await ctx.editMessageText(getTranslation(lang, 'brief.cancel_confirm'));
+    setLastBotMessage(userId, ctx.callbackQuery!.message!.message_id);
     await saveBrief(userId, { step: 'done' });
   });
 
-  // ---------- «← Назад» в FSM ----------
   bot.callbackQuery('brief_back_consent', async (ctx) => {
     await ctx.answerCallbackQuery();
     const userId = ctx.from?.id;

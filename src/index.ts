@@ -62,7 +62,7 @@ async function main() {
   }
 
   // 5. HTTP API панели
-  const server = createPanelServer();
+  const server = createPanelServer(bot);
   server.listen(config.panelApiPort, config.panelApiHost, () => {
     logger.info(`Panel API running on ${config.panelApiHost}:${config.panelApiPort}`);
   });

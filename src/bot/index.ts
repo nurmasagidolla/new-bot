@@ -7,6 +7,7 @@ import { installRateLimit } from './middleware';
 import { installCommands } from './commands';
 import { installMenus } from './menus';
 import { installBrief } from '../brief';
+import { installBroadcast } from '../broadcast/handlers';
 import { installFallbacks } from './fallbacks';
 
 export function createBot(): Bot {
@@ -25,6 +26,7 @@ export function createBot(): Bot {
   installCommands(bot);
   installMenus(bot);
   installBrief(bot);
+  installBroadcast(bot);
   installFallbacks(bot);
 
   return bot;

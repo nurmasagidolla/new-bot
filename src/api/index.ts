@@ -1,9 +1,11 @@
 import http from 'http';
+import type { Bot } from 'grammy';
 import { logger } from '../logger';
 import { dbAll, getEvents, ackEvents } from '../db-queries';
 import { isAuthorized, readBody, sendJson } from './auth';
+import { handleNotify } from './notify';
 
-export function createPanelServer(): http.Server {
+export function createPanelServer(bot: Bot): http.Server {
   return http.createServer(async (req, res) => {
     const url = new URL(req.url || '/', `http://${req.headers.host ?? 'localhost'}`);
 
@@ -59,6 +61,11 @@ export function createPanelServer(): http.Server {
         }
         await ackEvents(upTo);
         sendJson(res, 200, { ok: true });
+        return;
+      }
+
+      if (req.method === 'POST' && url.pathname === '/notify') {
+        await handleNotify(bot, req, res);
         return;
       }
 
